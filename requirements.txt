@@ -1,0 +1,4 @@
+streamlit
+openai
+firebase-admin
+google-cloud-firestore
