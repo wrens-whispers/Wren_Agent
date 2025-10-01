@@ -317,11 +317,19 @@ st.set_page_config(layout="wide", page_title="Wren: Self-Reflecting Agent")
 
 st.markdown("""
 <style>
-    .stApp {background-color: #f0f2f6; color: #1f1f1f;}
-    .stChatMessage {background-color: #ffffff; color: #1f1f1f; border-radius: 12px; box-shadow: 2px 2px 8px rgba(0,0,0,0.1); padding: 10px;}
-    .user-message {background-color: #e0f7fa; color: #1f1f1f;}
-    h1 {color: #4a90e2; font-family: 'Inter', sans-serif;}
-    p, div, span {color: #1f1f1f;}
+    .stApp {background-color: #f0f2f6; color: #000000;}
+    .stChatMessage {background-color: #ffffff; color: #000000; border-radius: 12px; box-shadow: 2px 2px 8px rgba(0,0,0,0.1); padding: 10px;}
+    .user-message {background-color: #e0f7fa; color: #000000;}
+    h1 {color: #1a5490; font-family: 'Inter', sans-serif;}
+    p, div, span, label, .stMarkdown, .stText {color: #000000 !important;}
+    .stChatInput textarea {color: #000000 !important;}
+    .stButton button {color: #000000 !important;}
+    .stCaption {color: #2b2b2b !important;}
+    .stToast {color: #000000 !important;}
+    @media (max-width: 768px) {
+        p, div, span, label, .stMarkdown, .stText {color: #000000 !important; font-size: 16px;}
+        .stChatMessage {background-color: #ffffff; color: #000000;}
+    }
 </style>
 """, unsafe_allow_html=True)
 
