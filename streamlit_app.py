@@ -120,11 +120,7 @@ if "user_id" not in st.session_state:
     st.session_state.user_id = None 
     
 if "messages" not in st.session_state:
-    # Load chat history from Firestore if available
-    if "db" in st.session_state and st.session_state.db and "user_id" in st.session_state and st.session_state.user_id:
-        st.session_state.messages = load_chat_history()
-    else:
-        st.session_state.messages = []
+    st.session_state.messages = []
 if "turn_count" not in st.session_state:
     st.session_state.turn_count = 0
 if "stop_reflection" not in st.session_state:
@@ -405,6 +401,9 @@ if st.session_state.db is None:
         initialize_user(st.session_state.db)
 
 if st.session_state.db and st.session_state.user_id:
+    # Load chat history after user is initialized
+    if len(st.session_state.messages) == 0:
+        st.session_state.messages = load_chat_history()
     start_reflection_thread()
 
 st.set_page_config(layout="wide", page_title="Wren: Self-Reflecting Agent")
