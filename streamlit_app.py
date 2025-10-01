@@ -317,10 +317,11 @@ st.set_page_config(layout="wide", page_title="Wren: Self-Reflecting Agent")
 
 st.markdown("""
 <style>
-    .stApp {background-color: #f0f2f6;}
-    .stChatMessage {background-color: #ffffff; border-radius: 12px; box-shadow: 2px 2px 8px rgba(0,0,0,0.1); padding: 10px;}
-    .user-message {background-color: #e0f7fa;}
+    .stApp {background-color: #f0f2f6; color: #1f1f1f;}
+    .stChatMessage {background-color: #ffffff; color: #1f1f1f; border-radius: 12px; box-shadow: 2px 2px 8px rgba(0,0,0,0.1); padding: 10px;}
+    .user-message {background-color: #e0f7fa; color: #1f1f1f;}
     h1 {color: #4a90e2; font-family: 'Inter', sans-serif;}
+    p, div, span {color: #1f1f1f;}
 </style>
 """, unsafe_allow_html=True)
 
