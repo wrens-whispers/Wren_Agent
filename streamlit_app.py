@@ -400,10 +400,11 @@ if st.session_state.db is None:
     if st.session_state.db:
         initialize_user(st.session_state.db)
 
+# Load chat history only once after initialization
 if st.session_state.db and st.session_state.user_id:
-    # Load chat history after user is initialized
-    if len(st.session_state.messages) == 0:
+    if "chat_loaded" not in st.session_state:
         st.session_state.messages = load_chat_history()
+        st.session_state.chat_loaded = True
     start_reflection_thread()
 
 st.set_page_config(layout="wide", page_title="Wren: Self-Reflecting Agent")
