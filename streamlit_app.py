@@ -575,8 +575,6 @@ if user_input := st.chat_input("Say something to Wren..."):
     with st.chat_message("assistant"):
         st.markdown(response)
 
-    st.rerun()
-
 with st.sidebar:
     st.header("Persistent Journal Status")
     
