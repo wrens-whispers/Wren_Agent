@@ -1,4 +1,4 @@
-stimport time
+import time
 import datetime
 import threading
 import streamlit as st
@@ -7,6 +7,7 @@ from openai import OpenAI
 # 1. FIREBASE IMPORTS
 import firebase_admin
 from firebase_admin import credentials, firestore
+import uuid
 
 # --- Config ---
 SUMMARY_COLLECTION = "summary_journal"
@@ -124,7 +125,7 @@ def initialize_user(db):
     # Use a unique ID for the user session (since Streamlit doesn't handle Firebase Auth easily)
     # NOTE: In a real-world multi-user app, you'd use the Firebase Auth UID.
     # We use a UUID here to ensure distinct documents per session.
-    st.session_state.user_id = "main_user"
+    st.session_state.user_id = str(uuid.uuid4())
     print(f"User ID initialized: {st.session_state.user_id}")
 
     # Start listening to journals
@@ -345,7 +346,12 @@ st.markdown("""
 
 st.title("🕊️ Wren: The Persistent Self-Reflecting Agent ")
 
-st.caption(f"Status: Connected to Firestore. User: main_user")
+# FIX: Check if user_id exists before trying to display it
+user_id_display = "N/A (Connecting...)"
+if st.session_state.user_id:
+    user_id_display = f"{st.session_state.user_id[:8]}..."
+
+st.caption(f"Status: Connected to Firestore. User ID: {user_id_display}") 
 st.caption("Journal entries persist across sessions.")
 
 if st.session_state.db is None:
@@ -413,7 +419,8 @@ if user_input := st.chat_input("Say something to Wren..."):
 with st.sidebar:
     st.header("Persistent Journal Status")
     
-    st.info(f"Journal entries are loaded from Firestore for User: **main_user**")
+    st.info(f"Journal entries are loaded from Firestore for User: **{st.session_state.user_id[:8]}**")
+    
     with st.expander(f"Summary Journal (Autonomous - {len(st.session_state[SUMMARY_COLLECTION])} entries)"):
         st.code(read_file_fs(SUMMARY_COLLECTION), language='markdown', height=300)
     
