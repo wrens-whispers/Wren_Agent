@@ -400,11 +400,7 @@ if st.session_state.db is None:
     if st.session_state.db:
         initialize_user(st.session_state.db)
 
-# Load chat history only once after initialization
 if st.session_state.db and st.session_state.user_id:
-    if "chat_loaded" not in st.session_state:
-        st.session_state.messages = load_chat_history()
-        st.session_state.chat_loaded = True
     start_reflection_thread()
 
 st.set_page_config(layout="wide", page_title="Wren: Self-Reflecting Agent")
@@ -520,7 +516,7 @@ if user_input := st.chat_input("Say something to Wren..."):
     
     with messages_lock:
         st.session_state.messages.append({"role": "user", "content": user_input})
-        save_chat_message("user", user_input)
+        #save_chat_message("user", user_input)
         st.session_state.turn_count += 1
         
         if len(st.session_state.messages) > MEMORY_LIMIT:
@@ -567,7 +563,7 @@ if user_input := st.chat_input("Say something to Wren..."):
     
     with messages_lock:
         st.session_state.messages.append({"role": "assistant", "content": response})
-        save_chat_message("assistant", response)
+        #save_chat_message("assistant", response)
     with st.chat_message("assistant"):
         st.markdown(response)
 
