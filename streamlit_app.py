@@ -522,6 +522,11 @@ for message in st.session_state.messages:
 
 if user_input := st.chat_input("Say something to Wren..."):
     
+    # Display user message immediately
+    with st.chat_message("user"):
+        st.markdown(user_input)
+    
+    # --- Phase 1: State Update & Message Preparation (Inside Lock) ---
     with messages_lock:
         st.session_state.messages.append({"role": "user", "content": user_input})
         save_chat_message("user", user_input)
@@ -553,11 +558,10 @@ if user_input := st.chat_input("Say something to Wren..."):
                 {"role": "system", "content": DEEP_DIVE_PROMPT},
                 {"role": "user", "content": context_string}
             ] + st.session_state.messages[-MEMORY_LIMIT:]
-            
-    with st.chat_message("user"):
-        st.markdown(user_input)
 
+    # --- Phase 2: API Calls (Outside Lock) ---
     with st.spinner("Wren is pausing for a persistent breath..."):
+        # A. Deep Dive
         if deep_dive_messages:
             reflection = generate(deep_dive_messages, MAX_TOKENS_DEEPDIVE) 
             write_journal_entry_fs(DEEPDIVE_COLLECTION, reflection)
@@ -567,11 +571,15 @@ if user_input := st.chat_input("Say something to Wren..."):
                 
             st.toast("Deep Dive recorded to Firestore!", icon="🧠")
 
+        # B. Normal Response
         response = generate(normal_response_messages, MAX_TOKENS_CHAT) 
     
+    # --- Phase 3: Final State Update & Display (Inside Lock) ---
     with messages_lock:
         st.session_state.messages.append({"role": "assistant", "content": response})
         save_chat_message("assistant", response)
+
+    # Display assistant response immediately
     with st.chat_message("assistant"):
         st.markdown(response)
 
