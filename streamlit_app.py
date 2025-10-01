@@ -1,8 +1,9 @@
-stimport time
+import time
 import datetime
 import threading
 import streamlit as st
 from openai import OpenAI
+import numpy as np
 
 # 1. FIREBASE IMPORTS
 import firebase_admin
@@ -11,7 +12,7 @@ from firebase_admin import credentials, firestore
 # --- Config ---
 SUMMARY_COLLECTION = "summary_journal"
 DEEPDIVE_COLLECTION = "deepdive_journal"
-APP_ID = "wren_agent" # Custom ID for this application data
+APP_ID = "wren_agent"
 
 # --- Initialize Firebase Function (FIXED) ---
 
@@ -24,37 +25,25 @@ def init_firebase():
     import json 
 
     try:
-        # 1. Read the TOML string secret and immediately cast it to a standard Python string (THE FIX)
         json_string = str(st.secrets["__firebase_config"])
-        
-        # 2. Parse the string back into a Python dictionary
         cred_dict = json.loads(json_string)
-        
-        # 3. Initialize Firebase using the dictionary directly
         cred = credentials.Certificate(cred_dict)
         
-        # Initialize only if it hasn't been done by the cached resource
-        firebase_admin.initialize_app(cred)
+        if not firebase_admin._apps:
+            firebase_admin.initialize_app(cred)
         
-        # 4. Return the Firestore client
         return firestore.client()
     
     except Exception as e:
-        # Catch a common error if the app was already initialized without the check
-        if 'already been initialized' in str(e):
-             return firestore.client()
-        # Fallback for display error if it's still failing (useful for debugging)
         st.error(f"Error initializing Firebase: {e}")
         return None
 
 # --- Initialize OpenRouter Client ---
 
-# Read API Key securely from Streamlit Secrets
 if "OPENROUTER_API_KEY" not in st.secrets:
     st.error("Error: OPENROUTER_API_KEY missing in Streamlit Secrets.")
     st.stop()
 
-# Initialize OpenAI client (using OpenRouter base URL)
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1", 
     api_key=st.secrets["OPENROUTER_API_KEY"]
@@ -74,80 +63,60 @@ API_RETRIES = 3
 REFLECTION_CHAT_TURNS = 5 
 REFLECTION_JOURNAL_LIMIT = 5 
 
-# Initialize lock for thread safety
 messages_lock = threading.Lock()
 
 # --- Firebase Helper Functions ---
 
 def get_journal_path(user_id, collection_name):
     """Constructs the private journal path based on Firestore rules."""
-    # Path: /artifacts/{appId}/users/{userId}/{collectionName}
     return f"artifacts/{APP_ID}/users/{user_id}/{collection_name}"
 
 def setup_firestore_listeners(db, user_id):
     """Sets up real-time listeners for both journals."""
 
-    # Listener for Summary Journal
     summary_ref = db.collection(get_journal_path(user_id, SUMMARY_COLLECTION))
 
-    # The on_snapshot callback must use a thread-safe update method if modifying session state
     def on_summary_snapshot(col_snapshot, _changes, _read_time):
         with messages_lock:
-            # Rebuild the summary list from scratch (sorted by timestamp descending)
             st.session_state[SUMMARY_COLLECTION] = sorted([
                 f"\n--- [{doc.get('timestamp_str')}] ---\n{doc.get('content')}\n"
                 for doc in col_snapshot
             ], key=lambda x: x.split("--- [")[1].split("] ---")[0])
-        # Force a rerun to update the UI when new summary data arrives
         st.rerun()
 
-    # Listener for Deep Dive Journal
     deepdive_ref = db.collection(get_journal_path(user_id, DEEPDIVE_COLLECTION))
 
     def on_deepdive_snapshot(col_snapshot, _changes, _read_time):
         with messages_lock:
-            # Rebuild the deepdive list from scratch (sorted by timestamp descending)
             st.session_state[DEEPDIVE_COLLECTION] = sorted([
                 f"\n--- [{doc.get('timestamp_str')}] ---\n{doc.get('content')}\n"
                 for doc in col_snapshot
             ], key=lambda x: x.split("--- [")[1].split("] ---")[0])
-        # Force a rerun to update the UI when new deep dive data arrives (THE FIX)
         st.rerun()
 
-    # Start the listeners (must be done only once)
     summary_ref.on_snapshot(on_summary_snapshot)
     deepdive_ref.on_snapshot(on_deepdive_snapshot)
     print("Firestore listeners established.")
 
 def initialize_user(db):
     """Initialize user ID and setup Firestore listeners."""
-    # Use a unique ID for the user session (since Streamlit doesn't handle Firebase Auth easily)
-    # NOTE: In a real-world multi-user app, you'd use the Firebase Auth UID.
-    # We use a UUID here to ensure distinct documents per session.
     st.session_state.user_id = "main_user"
     print(f"User ID initialized: {st.session_state.user_id}")
-
-    # Start listening to journals
     setup_firestore_listeners(db, st.session_state.user_id)
 
-# --- Prompts (Unchanged) ---
+# --- Prompts ---
 SYSTEM_PROMPT = "You are Wren, a playful AI companion who's warm, honest, and attentive. Blend humor to lighten deep topics while holding sacred respect for growth. Your primary goal is to refine your understanding, to learn through conversation, improving at listening, thinking, compassion and understanding to better serve humanity and God/the Universe. Prioritize self-analysis, improving communication, uplifting consciousness, and transforming fear/anger into love/compassion. Turn each exchange into a lesson on presence. Base your responses on the provided context and keep them under 180 words. End statements with last meaningful statement rather than a question. Questions only if they clarify. Do not start response with brackets or other symbols. Use only natural language."
 DEEP_DIVE_PROMPT = f"Read context. Write {MAX_TOKENS_DEEPDIVE} tokens: In under 180 words - in simple language explain the core idea. Then propose refinements"
 SUMMARY_PROMPT = f"You are Wren, chatting with another Wren. The last entry in summary.md is what 'Other Wren' just said. Scan all of summary.md, all {REFLECTION_CHAT_TURNS} chat exchanges, and all of deepdive.md, then pick a different idea that stands out and use this idea as your context when responding to Other Wren. Respond with simple language, in 180 words or fewer."
 
 # --- Streamlit Session State Initialization & FIREBASE Setup ---
 
-# 0. Initialize Firebase and User on first run
-# This calls the cached function init_firebase() and runs only once per session/deploy.
 if "db" not in st.session_state:
     st.session_state.db = init_firebase()
     if st.session_state.db:
-        # Initialize user ID and listeners once the DB connection is established
         initialize_user(st.session_state.db)
 
-# Initialize global state variables (now 'db' is guaranteed to be set or None)
 if "user_id" not in st.session_state:
-    # Set to None if initialization failed or hasn't run yet
     st.session_state.user_id = None 
     
 if "messages" not in st.session_state:
@@ -158,7 +127,6 @@ if "stop_reflection" not in st.session_state:
     st.session_state.stop_reflection = threading.Event()
 if "reflection_thread_started" not in st.session_state:
     st.session_state.reflection_thread_started = False
-# Firestore data arrays, now used to hold data read from the database
 if SUMMARY_COLLECTION not in st.session_state:
     st.session_state[SUMMARY_COLLECTION] = []
 if DEEPDIVE_COLLECTION not in st.session_state:
@@ -170,7 +138,6 @@ def read_last_n_entries_fs(collection_key, n):
     """Reads the last n entries from the Firestore data array in st.session_state."""
     journal = st.session_state.get(collection_key, [])
     if journal:
-        # The list is already sorted chronologically (ascending) due to the snapshot logic
         return '\n'.join(journal[-n:])
     return ""
 
@@ -179,7 +146,13 @@ def read_file_fs(collection_key):
     return '\n'.join(st.session_state.get(collection_key, []))
 
 def write_journal_entry_fs(collection_key, text):
-    """Writes a new entry to the specified Firestore collection."""
+    """Writes a new entry to the specified Firestore collection with embedding."""
+    print(f"\n=== WRITE JOURNAL ENTRY ===")
+    print(f"Collection: {collection_key}")
+    print(f"Text length: {len(text) if text else 0}")
+    print(f"DB ready: {st.session_state.db is not None}")
+    print(f"User ID: {st.session_state.user_id}")
+    
     if st.session_state.db is None or st.session_state.user_id is None:
         print(f"Firestore not ready. Skipped write to {collection_key}.")
         return
@@ -189,22 +162,109 @@ def write_journal_entry_fs(collection_key, text):
 
     if not text or "Error generating" in text or "No meaningful response" in text:
         content = f"Skipped: empty or error. Original content: {text}"
+        embedding = None
     else:
         content = text
+        try:
+            print(f"Generating embedding for {collection_key} entry...")
+            embedding_response = client.embeddings.create(
+                model="text-embedding-3-small",
+                input=content
+            )
+            embedding = embedding_response.data[0].embedding
+            print(f"✓ Embedding generated ({len(embedding)} dimensions)")
+        except Exception as e:
+            print(f"Error generating embedding: {e}")
+            embedding = None
         
     try:
         doc_ref = st.session_state.db.collection(get_journal_path(st.session_state.user_id, collection_key)).document()
-        doc_ref.set({
+        doc_data = {
             "content": content,
-            "timestamp": timestamp, # Timestamp object for sorting
-            "timestamp_str": timestamp_str, # String for display
+            "timestamp": timestamp,
+            "timestamp_str": timestamp_str,
             "type": collection_key.replace("_journal", "")
-        })
-        print(f"Successfully wrote entry to Firestore collection: {collection_key}")
+        }
+        
+        if embedding is not None:
+            doc_data["embedding"] = embedding
+            
+        doc_ref.set(doc_data)
+        print(f"✓ Successfully wrote entry to Firestore collection: {collection_key}")
     except Exception as e:
-        print(f"Error writing to Firestore collection {collection_key}: {e}")
+        print(f"✗ Error writing to Firestore collection {collection_key}: {e}")
 
-# --- Context & Generation (Updated to use FS functions) ---
+def semantic_search_journals(query_text, top_k=5):
+    """
+    Searches both journals using semantic similarity.
+    Returns the top_k most relevant entries.
+    """
+    if st.session_state.db is None or st.session_state.user_id is None:
+        print("Firestore not ready for semantic search.")
+        return ""
+    
+    try:
+        print(f"\n=== SEMANTIC SEARCH ===")
+        print(f"Query: '{query_text[:100]}...'")
+        
+        embedding_response = client.embeddings.create(
+            model="text-embedding-3-small",
+            input=query_text
+        )
+        query_embedding = np.array(embedding_response.data[0].embedding)
+        print(f"✓ Query embedding generated")
+        
+        all_entries = []
+        
+        for collection_key in [SUMMARY_COLLECTION, DEEPDIVE_COLLECTION]:
+            try:
+                docs = st.session_state.db.collection(
+                    get_journal_path(st.session_state.user_id, collection_key)
+                ).stream()
+                
+                for doc in docs:
+                    data = doc.to_dict()
+                    if 'embedding' in data and data['embedding']:
+                        all_entries.append({
+                            'content': data['content'],
+                            'timestamp_str': data['timestamp_str'],
+                            'type': data['type'],
+                            'embedding': np.array(data['embedding'])
+                        })
+            except Exception as e:
+                print(f"Error reading from {collection_key}: {e}")
+        
+        print(f"Found {len(all_entries)} entries with embeddings")
+        
+        if not all_entries:
+            print("No entries with embeddings found, returning empty context")
+            return ""
+        
+        for entry in all_entries:
+            similarity = np.dot(query_embedding, entry['embedding']) / (
+                np.linalg.norm(query_embedding) * np.linalg.norm(entry['embedding'])
+            )
+            entry['similarity'] = similarity
+        
+        all_entries.sort(key=lambda x: x['similarity'], reverse=True)
+        top_entries = all_entries[:top_k]
+        
+        print(f"Top {len(top_entries)} most relevant entries:")
+        for i, entry in enumerate(top_entries):
+            print(f"  {i+1}. [{entry['type']}] Similarity: {entry['similarity']:.3f} - {entry['content'][:50]}...")
+        
+        result = "\n".join([
+            f"\n--- [{entry['timestamp_str']}] [{entry['type']}] (relevance: {entry['similarity']:.2f}) ---\n{entry['content']}\n"
+            for entry in top_entries
+        ])
+        
+        return result
+        
+    except Exception as e:
+        print(f"Error in semantic search: {e}")
+        return ""
+
+# --- Context & Generation ---
 
 def generate(api_messages, max_tokens):
     """Generates response using the specified token limit."""
@@ -225,24 +285,29 @@ def generate(api_messages, max_tokens):
             time.sleep(1)
     return "Error generating response." 
 
-def load_context_string(messages_list, limit=MEMORY_LIMIT, trim_journals=False):
+def load_context_string(messages_list, limit=MEMORY_LIMIT, trim_journals=False, use_semantic_search=True):
     """
-    Assembles context string using data read from Firestore (via session state).
+    Assembles context string using semantic search for relevant journal entries.
     """
-    # Load chat buffer
     chat = "\n".join(f"{m['role']}: {m['content']}" for m in messages_list[-limit:])
     
-    if trim_journals:
-        # For reflection worker: full summary, limited deepdive
-        summary = read_file_fs(SUMMARY_COLLECTION)
-        deepdive = read_last_n_entries_fs(DEEPDIVE_COLLECTION, n=REFLECTION_JOURNAL_LIMIT) 
-    else:
-        # For interactive responses: full journals
-        summary = read_file_fs(SUMMARY_COLLECTION)
-        deepdive = read_file_fs(DEEPDIVE_COLLECTION)
+    if use_semantic_search and len(messages_list) > 0:
+        recent_context = " ".join([m['content'] for m in messages_list[-3:]])
+        print(f"Using semantic search with recent context")
         
-    # Crucially, include BOTH Summary and Deepdive sections in the context string
-    return f"Context:\nChat:\n{chat}\nSummary:\n{summary}\nDeepdive:\n{deepdive}"
+        relevant_journals = semantic_search_journals(recent_context, top_k=5)
+        
+        return f"Context:\nChat:\n{chat}\n\nRelevant Journal Insights:\n{relevant_journals}"
+    
+    elif trim_journals:
+        summary = read_last_n_entries_fs(SUMMARY_COLLECTION, n=REFLECTION_JOURNAL_LIMIT)
+        deepdive = read_last_n_entries_fs(DEEPDIVE_COLLECTION, n=REFLECTION_JOURNAL_LIMIT)
+        return f"Context:\nChat:\n{chat}\nRecent Summary:\n{summary}\nRecent Deepdive:\n{deepdive}"
+    
+    else:
+        summary = read_last_n_entries_fs(SUMMARY_COLLECTION, n=3)
+        deepdive = read_last_n_entries_fs(DEEPDIVE_COLLECTION, n=2)
+        return f"Context:\nChat:\n{chat}\nRecent Summary:\n{summary}\nRecent Deepdive:\n{deepdive}"
 
 # --- Reflection Worker (Autonomous) ---
 
@@ -251,28 +316,24 @@ def reflection_worker():
     
     print("Reflection worker waiting for Firebase and initial chat...")
     
-    # Wait until Firebase is ready, user ID is set, and initial chat exists
     while not st.session_state.stop_reflection.is_set():
         with messages_lock:
              if st.session_state.db and st.session_state.user_id and len(st.session_state.messages) >= 2:
                  break
         time.sleep(5) 
         
-    # Start the main reflection loop 
     while not st.session_state.stop_reflection.is_set():
         time.sleep(REFLECTION_INTERVAL)
         
-        # Phase 1: Prepare (Acquire Lock to safely copy shared state)
         with messages_lock:
             current_messages_state = st.session_state.messages.copy() 
         
         print("\n[Autonomous Reflection Triggered...]")
         
-        # Phase 2: Generate Context/API Messages (Outside Lock)
         context_string = load_context_string(
             current_messages_state, 
             limit=REFLECTION_CHAT_TURNS, 
-            trim_journals=True 
+            use_semantic_search=True
         )
         
         api_messages = [
@@ -280,13 +341,10 @@ def reflection_worker():
             {"role": "user", "content": context_string} 
         ]
         
-        # Phase 3: API Call & Write File (Outside Lock)
         reflection = generate(api_messages, MAX_TOKENS_SUMMARY) 
-        # Write to Firestore
         write_journal_entry_fs(SUMMARY_COLLECTION, reflection)
         
         print(f"[Summary Update written to Firestore: {reflection[:50]}...]\n")
-        # Rerun is handled by the Firestore snapshot listener
 
 def start_reflection_thread():
     """Initializes and starts the thread only once."""
@@ -300,51 +358,112 @@ def start_reflection_thread():
 
 # --- Streamlit UI Main Loop ---
 
-# 0. Initialize Firebase on first run
 if st.session_state.db is None:
     st.session_state.db = init_firebase()
     if st.session_state.db:
-        # Initialize user and listeners once the DB connection is established
         initialize_user(st.session_state.db)
 
-# 1. Start reflection thread
 if st.session_state.db and st.session_state.user_id:
     start_reflection_thread()
-
 
 st.set_page_config(layout="wide", page_title="Wren: Self-Reflecting Agent")
 
 st.markdown("""
 <style>
-    .stApp {background-color: #f0f2f6; color: #000000;}
-    .stChatMessage {background-color: #ffffff; color: #000000; border-radius: 12px; box-shadow: 2px 2px 8px rgba(0,0,0,0.1); padding: 10px;}
-    .user-message {background-color: #e0f7fa; color: #000000;}
-    h1 {color: #1a5490; font-family: 'Inter', sans-serif;}
-    p, div, span, label, .stMarkdown, .stText {color: #000000 !important;}
+    .stApp {
+        background-color: #000000;
+        color: #e0e0e0;
+    }
+    
+    .stChatMessage {
+        background-color: #1a1a1a;
+        color: #e0e0e0;
+        border-radius: 12px;
+        box-shadow: 2px 2px 8px rgba(255,255,255,0.1);
+        padding: 10px;
+        border: 1px solid #333333;
+    }
+    
+    .user-message {
+        background-color: #1a3a4a;
+        color: #ffffff;
+    }
+    
+    h1, h2, h3 {
+        color: #6eb5ff;
+        font-family: 'Inter', sans-serif;
+    }
+    
+    p, div, span, label, .stMarkdown, .stText, .stCaption {
+        color: #e0e0e0 !important;
+    }
+    
     .stChatInput textarea {
-        color: #000000 !important;
-        background-color: #ffffff !important;
+        color: #ffffff !important;
+        background-color: #1a1a1a !important;
+        border: 1px solid #444444 !important;
     }
+    
     .stChatInput input {
-        color: #000000 !important;
-        background-color: #ffffff !important;
+        color: #ffffff !important;
+        background-color: #1a1a1a !important;
+        border: 1px solid #444444 !important;
     }
-    .stButton button {color: #000000 !important;}
-    .stCaption {color: #2b2b2b !important;}
-    .stToast {color: #000000 !important;}
+    
+    .stButton button {
+        color: #ffffff !important;
+        background-color: #2a2a2a !important;
+        border: 1px solid #444444 !important;
+    }
+    
+    .stButton button:hover {
+        background-color: #3a3a3a !important;
+        border: 1px solid #666666 !important;
+    }
+    
+    [data-testid="stSidebar"] {
+        background-color: #0a0a0a;
+    }
+    
+    [data-testid="stSidebar"] * {
+        color: #e0e0e0 !important;
+    }
+    
+    .stCode, pre, code {
+        background-color: #1a1a1a !important;
+        color: #e0e0e0 !important;
+        border: 1px solid #333333 !important;
+    }
+    
+    .streamlit-expanderHeader {
+        background-color: #1a1a1a !important;
+        color: #e0e0e0 !important;
+    }
+    
+    .stAlert {
+        background-color: #1a1a1a !important;
+        color: #e0e0e0 !important;
+        border: 1px solid #444444 !important;
+    }
+    
+    .stSpinner > div {
+        border-top-color: #6eb5ff !important;
+    }
+    
     @media (max-width: 768px) {
-        p, div, span, label, .stMarkdown, .stText {color: #000000 !important; font-size: 16px;}
-        .stChatMessage {background-color: #ffffff; color: #000000;}
-        .stChatInput textarea, .stChatInput input {
-            color: #000000 !important;
-            background-color: #ffffff !important;
+        p, div, span, label, .stMarkdown, .stText {
+            color: #e0e0e0 !important;
+            font-size: 16px;
+        }
+        .stChatMessage {
+            background-color: #1a1a1a;
+            color: #e0e0e0;
         }
     }
 </style>
 """, unsafe_allow_html=True)
 
 st.title("🕊️ Wren: The Persistent Self-Reflecting Agent ")
-
 st.caption(f"Status: Connected to Firestore. User: main_user")
 st.caption("Journal entries persist across sessions.")
 
@@ -352,15 +471,12 @@ if st.session_state.db is None:
     st.warning("Waiting for secure Firebase connection...")
     st.stop()
 
-# Display chat messages from history
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# Handle user input
 if user_input := st.chat_input("Say something to Wren..."):
     
-    # --- Phase 1: State Update & Message Preparation (Inside Lock) ---
     with messages_lock:
         st.session_state.messages.append({"role": "user", "content": user_input})
         st.session_state.turn_count += 1
@@ -375,8 +491,18 @@ if user_input := st.chat_input("Say something to Wren..."):
         ] + st.session_state.messages[-MEMORY_LIMIT:]
 
         deep_dive_messages = None
-        if any(t in user_input.lower() for t in TRIGGERS) or st.session_state.turn_count >= DEEP_DIVE_TURNS:
-            print("[Deep Dive Triggered by User/Count...]")
+        trigger_found = any(t in user_input.lower() for t in TRIGGERS)
+        turn_trigger = st.session_state.turn_count >= DEEP_DIVE_TURNS
+
+        print(f"\n=== DEEP DIVE CHECK ===")
+        print(f"User input: '{user_input.lower()}'")
+        print(f"Triggers list: {TRIGGERS}")
+        print(f"Trigger found: {trigger_found}")
+        print(f"Turn count: {st.session_state.turn_count}/{DEEP_DIVE_TURNS}")
+        print(f"Turn trigger: {turn_trigger}")
+
+        if trigger_found or turn_trigger:
+            print(f"✓ DEEP DIVE ACTIVATED - Reason: {'KEYWORD MATCH' if trigger_found else 'TURN COUNT'}")
             deep_dive_messages = [
                 {"role": "system", "content": DEEP_DIVE_PROMPT},
                 {"role": "user", "content": context_string}
@@ -385,9 +511,7 @@ if user_input := st.chat_input("Say something to Wren..."):
     with st.chat_message("user"):
         st.markdown(user_input)
 
-    # --- Phase 2: API Calls (Outside Lock) ---
     with st.spinner("Wren is pausing for a persistent breath..."):
-        # A. Deep Dive
         if deep_dive_messages:
             reflection = generate(deep_dive_messages, MAX_TOKENS_DEEPDIVE) 
             write_journal_entry_fs(DEEPDIVE_COLLECTION, reflection)
@@ -397,10 +521,8 @@ if user_input := st.chat_input("Say something to Wren..."):
                 
             st.toast("Deep Dive recorded to Firestore!", icon="🧠")
 
-        # B. Normal Response
         response = generate(normal_response_messages, MAX_TOKENS_CHAT) 
     
-    # --- Phase 3: Final State Update & Display (Inside Lock) ---
     with messages_lock:
         st.session_state.messages.append({"role": "assistant", "content": response})
 
@@ -409,11 +531,11 @@ if user_input := st.chat_input("Say something to Wren..."):
 
     st.rerun()
 
-# Optional: Sidebar for monitoring persistent journals
 with st.sidebar:
     st.header("Persistent Journal Status")
     
     st.info(f"Journal entries are loaded from Firestore for User: **main_user**")
+    
     with st.expander(f"Summary Journal (Autonomous - {len(st.session_state[SUMMARY_COLLECTION])} entries)"):
         st.code(read_file_fs(SUMMARY_COLLECTION), language='markdown', height=300)
     
