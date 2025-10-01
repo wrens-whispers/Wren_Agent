@@ -82,7 +82,7 @@ def setup_firestore_listeners(db, user_id):
                 f"\n--- [{doc.get('timestamp_str')}] ---\n{doc.get('content')}\n"
                 for doc in col_snapshot
             ], key=lambda x: x.split("--- [")[1].split("] ---")[0])
-        st.rerun()
+        # Don't force rerun - let natural flow handle updates
 
     deepdive_ref = db.collection(get_journal_path(user_id, DEEPDIVE_COLLECTION))
 
@@ -92,7 +92,7 @@ def setup_firestore_listeners(db, user_id):
                 f"\n--- [{doc.get('timestamp_str')}] ---\n{doc.get('content')}\n"
                 for doc in col_snapshot
             ], key=lambda x: x.split("--- [")[1].split("] ---")[0])
-        st.rerun()
+        # Don't force rerun - let natural flow handle updates
 
     summary_ref.on_snapshot(on_summary_snapshot)
     deepdive_ref.on_snapshot(on_deepdive_snapshot)
