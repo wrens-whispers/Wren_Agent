@@ -315,6 +315,7 @@ def generate(api_messages, max_tokens):
     """Generates response using the specified token limit."""
     for attempt in range(API_RETRIES):
         try:
+            st.write(f"DEBUG: Attempting API call, attempt {attempt+1}")
             completion = client.chat.completions.create(
                 model=MODEL,
                 messages=api_messages,
@@ -322,13 +323,16 @@ def generate(api_messages, max_tokens):
                 temperature=TEMPERATURE
             )
             content = completion.choices[0].message.content.strip()
+            st.write(f"DEBUG: Got response: {content[:50]}...")
             return content if content else "No meaningful response generated."
         except Exception as e:
-            print(f"API error (attempt {attempt+1}/{API_RETRIES}): {e}")
+            error_msg = f"API error (attempt {attempt+1}/{API_RETRIES}): {e}"
+            print(error_msg)
+            st.error(error_msg)
             if attempt == API_RETRIES - 1:
                 return "Error generating response after retries."
             time.sleep(1)
-    return "Error generating response." 
+    return "Error generating response."
 
 def load_context_string(messages_list, limit=MEMORY_LIMIT, trim_journals=False, use_semantic_search=True):
     """
