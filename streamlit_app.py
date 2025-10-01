@@ -120,7 +120,11 @@ if "user_id" not in st.session_state:
     st.session_state.user_id = None 
     
 if "messages" not in st.session_state:
-    st.session_state.messages = []
+    # Load chat history from Firestore if available
+    if "db" in st.session_state and st.session_state.db and "user_id" in st.session_state and st.session_state.user_id:
+        st.session_state.messages = load_chat_history()
+    else:
+        st.session_state.messages = []
 if "turn_count" not in st.session_state:
     st.session_state.turn_count = 0
 if "stop_reflection" not in st.session_state:
@@ -193,7 +197,44 @@ def write_journal_entry_fs(collection_key, text):
         print(f"✓ Successfully wrote entry to Firestore collection: {collection_key}")
     except Exception as e:
         print(f"✗ Error writing to Firestore collection {collection_key}: {e}")
+def save_chat_message(role, content):
+    """Saves a chat message to Firestore."""
+    if st.session_state.db is None or st.session_state.user_id is None:
+        return
+    
+    try:
+        timestamp = datetime.datetime.now()
+        chat_ref = st.session_state.db.collection(get_journal_path(st.session_state.user_id, "chat_history"))
+        chat_ref.add({
+            "role": role,
+            "content": content,
+            "timestamp": timestamp
+        })
+        print(f"Saved {role} message to Firestore")
+    except Exception as e:
+        print(f"Error saving chat message: {e}")
 
+def load_chat_history():
+    """Loads chat history from Firestore on startup."""
+    if st.session_state.db is None or st.session_state.user_id is None:
+        return []
+    
+    try:
+        chat_ref = st.session_state.db.collection(get_journal_path(st.session_state.user_id, "chat_history"))
+        docs = chat_ref.order_by("timestamp").limit(MEMORY_LIMIT).stream()
+        
+        messages = []
+        for doc in docs:
+            data = doc.to_dict()
+            messages.append({
+                "role": data["role"],
+                "content": data["content"]
+            })
+        print(f"Loaded {len(messages)} chat messages from Firestore")
+        return messages
+    except Exception as e:
+        print(f"Error loading chat history: {e}")
+        return []
 def semantic_search_journals(query_text, top_k=5):
     """
     Searches both journals using semantic similarity.
@@ -479,6 +520,7 @@ if user_input := st.chat_input("Say something to Wren..."):
     
     with messages_lock:
         st.session_state.messages.append({"role": "user", "content": user_input})
+        save_chat_message("user", user_input)
         st.session_state.turn_count += 1
         
         if len(st.session_state.messages) > MEMORY_LIMIT:
@@ -525,7 +567,7 @@ if user_input := st.chat_input("Say something to Wren..."):
     
     with messages_lock:
         st.session_state.messages.append({"role": "assistant", "content": response})
-
+        save_chat_message("assistant", response)
     with st.chat_message("assistant"):
         st.markdown(response)
 
