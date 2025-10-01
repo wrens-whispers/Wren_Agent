@@ -322,13 +322,24 @@ st.markdown("""
     .user-message {background-color: #e0f7fa; color: #000000;}
     h1 {color: #1a5490; font-family: 'Inter', sans-serif;}
     p, div, span, label, .stMarkdown, .stText {color: #000000 !important;}
-    .stChatInput textarea {color: #000000 !important;}
+    .stChatInput textarea {
+        color: #000000 !important;
+        background-color: #ffffff !important;
+    }
+    .stChatInput input {
+        color: #000000 !important;
+        background-color: #ffffff !important;
+    }
     .stButton button {color: #000000 !important;}
     .stCaption {color: #2b2b2b !important;}
     .stToast {color: #000000 !important;}
     @media (max-width: 768px) {
         p, div, span, label, .stMarkdown, .stText {color: #000000 !important; font-size: 16px;}
         .stChatMessage {background-color: #ffffff; color: #000000;}
+        .stChatInput textarea, .stChatInput input {
+            color: #000000 !important;
+            background-color: #ffffff !important;
+        }
     }
 </style>
 """, unsafe_allow_html=True)
