@@ -191,6 +191,8 @@ def setup_firestore_listeners(db, user_id):
                 f"\n--- [{doc.get('timestamp_str')}] ---\n{doc.get('content')}\n"
                 for doc in col_snapshot
             ], key=lambda x: x.split("--- [")[1].split("] ---")[0])
+        # Force a rerun to update the UI when new deep dive data arrives (THE FIX)
+        st.rerun()
 
     # Start the listeners (must be done only once)
     summary_ref.on_snapshot(on_summary_snapshot)
