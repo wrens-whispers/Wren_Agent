@@ -409,9 +409,6 @@ if st.session_state.db is None:
         initialize_user(st.session_state.db)
 
 if st.session_state.db and st.session_state.user_id:
-    if "chat_loaded" not in st.session_state:
-        st.session_state.messages = load_chat_history()
-        st.session_state.chat_loaded = True
     start_reflection_thread()
 
 st.set_page_config(layout="wide", page_title="Wren: Self-Reflecting Agent")
