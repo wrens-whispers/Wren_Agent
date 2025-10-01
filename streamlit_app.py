@@ -67,7 +67,7 @@ MAX_TOKENS_DEEPDIVE = 400
 TEMPERATURE = 0.9 
 MEMORY_LIMIT = 10 
 DEEP_DIVE_TURNS = 30
-REFLECTION_INTERVAL = 300 # 5 minutes in seconds
+REFLECTION_INTERVAL = 1800
 TRIGGERS = ["deep dive", "protocol", "key insight", "deepdive", "very important", "remember this", "protocol change"] 
 API_RETRIES = 3
 REFLECTION_CHAT_TURNS = 5 
@@ -358,8 +358,14 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🕊️ Wren: The Persistent Self-Reflecting Agent")
-st.caption(f"Status: Connected to Firestore. User ID: {st.session_state.user_id[:8]}...")
+st.title("🕊️ Wren: The Persistent Self-Reflecting Agent ")
+
+# FIX: Check if user_id exists before trying to display it
+user_id_display = "N/A (Connecting...)"
+if st.session_state.user_id:
+    user_id_display = f"{st.session_state.user_id[:8]}..."
+
+st.caption(f"Status: Connected to Firestore. User ID: {user_id_display}") 
 st.caption("Journal entries persist across sessions.")
 
 if st.session_state.db is None:
