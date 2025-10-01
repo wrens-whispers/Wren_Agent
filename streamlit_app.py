@@ -2,26 +2,58 @@ import time
 import datetime
 import threading
 import streamlit as st
+import json # <-- Added for parsing Firebase JSON secret
 from openai import OpenAI
 
 # 1. FIREBASE IMPORTS
-from firebase_admin import initialize_app, credentials, firestore
-from google.oauth2.service_account import Credentials
-import json
+import firebase_admin
+from firebase_admin import credentials, firestore
+from google.oauth2.service_account import Credentials # <-- Keeping this in case you use it later, though not needed for the fix
 import uuid
 
 # --- Config ---
-# We no longer rely on ephemeral session state for journals
 SUMMARY_COLLECTION = "summary_journal"
 DEEPDIVE_COLLECTION = "deepdive_journal"
 APP_ID = "wren_agent" # Custom ID for this application data
+
+# --- Initialize Firebase Function (FIXED) ---
+
+def init_firebase():
+    """
+    Initializes the Firebase app using the service account credentials 
+    stored as a multiline string in secrets.toml.
+    """
+    try:
+        # Check if app is already initialized to prevent error on rerun
+        if not firebase_admin._apps:
+            # 1. Read the TOML string secret
+            json_string = st.secrets["__firebase_config"]
+            
+            # 2. Parse the string back into a Python dictionary (JSON object)
+            cred_dict = json.loads(json_string)
+            
+            # 3. Initialize Firebase
+            cred = credentials.Certificate(cred_dict)
+            firebase_admin.initialize_app(cred)
+        
+        # 4. Return the Firestore client
+        return firestore.client()
+    
+    except KeyError:
+        st.error("Firebase secrets not found. Please ensure '__firebase_config' is set in .streamlit/secrets.toml.")
+        return None
+    except Exception as e:
+        st.error(f"Error initializing Firebase: {e}")
+        return None
+
+# --- Initialize OpenRouter Client ---
 
 # Read API Key securely from Streamlit Secrets
 if "OPENROUTER_API_KEY" not in st.secrets:
     st.error("Error: OPENROUTER_API_KEY missing in Streamlit Secrets.")
     st.stop()
 
-# Initialize client
+# Initialize OpenAI client (using OpenRouter base URL)
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1", 
     api_key=st.secrets["OPENROUTER_API_KEY"]
@@ -51,11 +83,19 @@ SUMMARY_PROMPT = f"You are Wren, chatting with another Wren. The last entry in s
 
 # --- Streamlit Session State Initialization & FIREBASE Setup ---
 
-# Initialize global state variables
+# 0. Initialize Firebase and User on first run
+# This calls the cached function init_firebase() and runs only once per session/deploy.
 if "db" not in st.session_state:
-    st.session_state.db = None
+    st.session_state.db = init_firebase()
+    if st.session_state.db:
+        # Initialize user ID and listeners once the DB connection is established
+        initialize_user(st.session_state.db)
+
+# Initialize global state variables (now 'db' is guaranteed to be set or None)
 if "user_id" not in st.session_state:
-    st.session_state.user_id = None
+    # Set to None if initialization failed or hasn't run yet
+    st.session_state.user_id = None 
+    
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "turn_count" not in st.session_state:
@@ -73,34 +113,35 @@ if DEEPDIVE_COLLECTION not in st.session_state:
 
 @st.cache_resource
 def init_firebase():
-    """Initializes Firebase and returns the Firestore client."""
-    
-    # 2. Extract Firebase Config from global variables (or secret if running outside Canvas)
+    """
+    Initializes the Firebase app using the service account credentials 
+    stored as a multiline string in secrets.toml.
+    """
     try:
-        firebase_config_str = st.secrets["__firebase_config"]
-        firebase_config = json.loads(firebase_config_str)
-    except Exception as e:
-        print(f"Error loading firebase config from secrets: {e}")
-        st.error("Firebase configuration not available.")
+        # 1. Read the TOML string secret
+        json_string = st.secrets["__firebase_config"]
+        
+        # 2. Parse the string back into a Python dictionary (JSON object)
+        cred_dict = json.loads(json_string)
+        
+        # 3. Initialize Firebase using the dictionary directly
+        cred = credentials.Certificate(cred_dict)
+        
+        # Initialize only if it hasn't been done by the cached resource
+        firebase_admin.initialize_app(cred)
+        
+        # 4. Return the Firestore client
+        return firestore.client()
+    
+    except KeyError:
+        st.error("Firebase secrets not found. Please ensure '__firebase_config' is set in .streamlit/secrets.toml.")
         return None
-
-    # Use a dummy credential for initialization since we rely on the custom auth token
-    cred = credentials.Certificate({
-        "type": "service_account",
-        "project_id": firebase_config.get("projectId"),
-        "private_key_id": "dummy_id",
-        "private_key": "-----BEGIN PRIVATE KEY-----\ndummy_key\n-----END PRIVATE KEY-----\n",
-        "client_email": "dummy@example.com",
-        "client_id": "dummy_id",
-    })
-
-    try:
-        app = initialize_app(cred)
-    except ValueError:
-        # App might already be initialized if using st.cache_resource
-        pass 
-    
-    return firestore.client()
+    except Exception as e:
+        # Catch a common error if the app was already initialized without the check
+        if 'already been initialized' in str(e):
+             return firestore.client()
+        st.error(f"Error initializing Firebase: {e}")
+        return None
 
 def initialize_user(db):
     """Sets up user ID and starts listening to Firestore data."""
