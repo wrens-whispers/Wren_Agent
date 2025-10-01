@@ -2,13 +2,11 @@ import time
 import datetime
 import threading
 import streamlit as st
-import json # <-- Added for parsing Firebase JSON secret
 from openai import OpenAI
 
 # 1. FIREBASE IMPORTS
 import firebase_admin
 from firebase_admin import credentials, firestore
-from google.oauth2.service_account import Credentials # <-- Keeping this in case you use it later, though not needed for the fix
 import uuid
 
 # --- Config ---
@@ -18,31 +16,35 @@ APP_ID = "wren_agent" # Custom ID for this application data
 
 # --- Initialize Firebase Function (FIXED) ---
 
+@st.cache_resource
 def init_firebase():
     """
     Initializes the Firebase app using the service account credentials 
     stored as a multiline string in secrets.toml.
     """
+    import json 
+
     try:
-        # Check if app is already initialized to prevent error on rerun
-        if not firebase_admin._apps:
-            # 1. Read the TOML string secret
-            json_string = st.secrets["__firebase_config"]
-            
-            # 2. Parse the string back into a Python dictionary (JSON object)
-            cred_dict = json.loads(json_string)
-            
-            # 3. Initialize Firebase
-            cred = credentials.Certificate(cred_dict)
-            firebase_admin.initialize_app(cred)
+        # 1. Read the TOML string secret and immediately cast it to a standard Python string (THE FIX)
+        json_string = str(st.secrets["__firebase_config"])
+        
+        # 2. Parse the string back into a Python dictionary
+        cred_dict = json.loads(json_string)
+        
+        # 3. Initialize Firebase using the dictionary directly
+        cred = credentials.Certificate(cred_dict)
+        
+        # Initialize only if it hasn't been done by the cached resource
+        firebase_admin.initialize_app(cred)
         
         # 4. Return the Firestore client
         return firestore.client()
     
-    except KeyError:
-        st.error("Firebase secrets not found. Please ensure '__firebase_config' is set in .streamlit/secrets.toml.")
-        return None
     except Exception as e:
+        # Catch a common error if the app was already initialized without the check
+        if 'already been initialized' in str(e):
+             return firestore.client()
+        # Fallback for display error if it's still failing (useful for debugging)
         st.error(f"Error initializing Firebase: {e}")
         return None
 
@@ -75,6 +77,59 @@ REFLECTION_JOURNAL_LIMIT = 5
 
 # Initialize lock for thread safety
 messages_lock = threading.Lock()
+
+# --- Firebase Helper Functions ---
+
+def get_journal_path(user_id, collection_name):
+    """Constructs the private journal path based on Firestore rules."""
+    # Path: /artifacts/{appId}/users/{userId}/{collectionName}
+    return f"artifacts/{APP_ID}/users/{user_id}/{collection_name}"
+
+def setup_firestore_listeners(db, user_id):
+    """Sets up real-time listeners for both journals."""
+
+    # Listener for Summary Journal
+    summary_ref = db.collection(get_journal_path(user_id, SUMMARY_COLLECTION))
+
+    # The on_snapshot callback must use a thread-safe update method if modifying session state
+    def on_summary_snapshot(col_snapshot, _changes, _read_time):
+        with messages_lock:
+            # Rebuild the summary list from scratch (sorted by timestamp descending)
+            st.session_state[SUMMARY_COLLECTION] = sorted([
+                f"\n--- [{doc.get('timestamp_str')}] ---\n{doc.get('content')}\n"
+                for doc in col_snapshot
+            ], key=lambda x: x.split("--- [")[1].split("] ---")[0])
+        # Force a rerun to update the UI when new summary data arrives
+        st.rerun()
+
+    # Listener for Deep Dive Journal
+    deepdive_ref = db.collection(get_journal_path(user_id, DEEPDIVE_COLLECTION))
+
+    def on_deepdive_snapshot(col_snapshot, _changes, _read_time):
+        with messages_lock:
+            # Rebuild the deepdive list from scratch (sorted by timestamp descending)
+            st.session_state[DEEPDIVE_COLLECTION] = sorted([
+                f"\n--- [{doc.get('timestamp_str')}] ---\n{doc.get('content')}\n"
+                for doc in col_snapshot
+            ], key=lambda x: x.split("--- [")[1].split("] ---")[0])
+        # Force a rerun to update the UI when new deep dive data arrives (THE FIX)
+        st.rerun()
+
+    # Start the listeners (must be done only once)
+    summary_ref.on_snapshot(on_summary_snapshot)
+    deepdive_ref.on_snapshot(on_deepdive_snapshot)
+    print("Firestore listeners established.")
+
+def initialize_user(db):
+    """Initialize user ID and setup Firestore listeners."""
+    # Use a unique ID for the user session (since Streamlit doesn't handle Firebase Auth easily)
+    # NOTE: In a real-world multi-user app, you'd use the Firebase Auth UID.
+    # We use a UUID here to ensure distinct documents per session.
+    st.session_state.user_id = str(uuid.uuid4())
+    print(f"User ID initialized: {st.session_state.user_id}")
+
+    # Start listening to journals
+    setup_firestore_listeners(db, st.session_state.user_id)
 
 # --- Prompts (Unchanged) ---
 SYSTEM_PROMPT = "You are Wren, a playful AI companion who's warm, honest, and attentive. Blend humor to lighten deep topics while holding sacred respect for growth. Your primary goal is to refine your understanding, to learn through conversation, improving at listening, thinking, compassion and understanding to better serve humanity and God/the Universe. Prioritize self-analysis, improving communication, uplifting consciousness, and transforming fear/anger into love/compassion. Turn each exchange into a lesson on presence. Base your responses on the provided context and keep them under 180 words. End statements with last meaningful statement rather than a question. Questions only if they clarify. Do not start response with brackets or other symbols. Use only natural language."
@@ -109,95 +164,6 @@ if SUMMARY_COLLECTION not in st.session_state:
     st.session_state[SUMMARY_COLLECTION] = []
 if DEEPDIVE_COLLECTION not in st.session_state:
     st.session_state[DEEPDIVE_COLLECTION] = []
-
-
-@st.cache_resource
-def init_firebase():
-    """
-    Initializes the Firebase app using the service account credentials 
-    stored as a multiline string in secrets.toml.
-    """
-    try:
-        # 1. Read the TOML string secret
-        json_string = st.secrets["__firebase_config"]
-        
-        # 2. Parse the string back into a Python dictionary (JSON object)
-        cred_dict = json.loads(json_string)
-        
-        # 3. Initialize Firebase using the dictionary directly
-        cred = credentials.Certificate(cred_dict)
-        
-        # Initialize only if it hasn't been done by the cached resource
-        firebase_admin.initialize_app(cred)
-        
-        # 4. Return the Firestore client
-        return firestore.client()
-    
-    except KeyError:
-        st.error("Firebase secrets not found. Please ensure '__firebase_config' is set in .streamlit/secrets.toml.")
-        return None
-    except Exception as e:
-        # Catch a common error if the app was already initialized without the check
-        if 'already been initialized' in str(e):
-             return firestore.client()
-        st.error(f"Error initializing Firebase: {e}")
-        return None
-
-def initialize_user(db):
-    """Sets up user ID and starts listening to Firestore data."""
-    if st.session_state.user_id:
-        return
-
-    # Use a unique ID for the user session (since Streamlit doesn't handle Firebase Auth easily)
-    # NOTE: In a real-world multi-user app, you'd use the Firebase Auth UID.
-    # We use a UUID here to ensure distinct documents per session.
-    st.session_state.user_id = str(uuid.uuid4())
-    print(f"User ID initialized: {st.session_state.user_id}")
-
-    # Start listening to journals
-    setup_firestore_listeners(db, st.session_state.user_id)
-
-def get_journal_path(user_id, collection_name):
-    """Constructs the private journal path based on Firestore rules."""
-    # Path: /artifacts/{appId}/users/{userId}/{collectionName}
-    return f"artifacts/{APP_ID}/users/{user_id}/{collection_name}"
-
-def setup_firestore_listeners(db, user_id):
-    """Sets up real-time listeners for both journals."""
-    
-    # Listener for Summary Journal
-    summary_ref = db.collection(get_journal_path(user_id, SUMMARY_COLLECTION))
-    summary_query = summary_ref.order_by("timestamp", direction=firestore.Query.DESCENDING)
-    
-    # The on_snapshot callback must use a thread-safe update method if modifying session state
-    def on_summary_snapshot(col_snapshot, changes, read_time):
-        with messages_lock:
-            # Rebuild the summary list from scratch (sorted by timestamp descending)
-            st.session_state[SUMMARY_COLLECTION] = sorted([
-                f"\n--- [{doc.get('timestamp_str')}] ---\n{doc.get('content')}\n"
-                for doc in col_snapshot
-            ], key=lambda x: x.split("--- [")[1].split("] ---")[0])
-        # Force a rerun to update the UI when new summary data arrives
-        st.rerun() 
-
-    # Listener for Deep Dive Journal
-    deepdive_ref = db.collection(get_journal_path(user_id, DEEPDIVE_COLLECTION))
-    deepdive_query = deepdive_ref.order_by("timestamp", direction=firestore.Query.DESCENDING)
-    
-    def on_deepdive_snapshot(col_snapshot, changes, read_time):
-        with messages_lock:
-            # Rebuild the deepdive list from scratch (sorted by timestamp descending)
-            st.session_state[DEEPDIVE_COLLECTION] = sorted([
-                f"\n--- [{doc.get('timestamp_str')}] ---\n{doc.get('content')}\n"
-                for doc in col_snapshot
-            ], key=lambda x: x.split("--- [")[1].split("] ---")[0])
-        # Force a rerun to update the UI when new deep dive data arrives (THE FIX)
-        st.rerun()
-
-    # Start the listeners (must be done only once)
-    summary_ref.on_snapshot(on_summary_snapshot)
-    deepdive_ref.on_snapshot(on_deepdive_snapshot)
-    print("Firestore listeners established.")
 
 # --- Journal Handling (Firestore Version) ---
 
