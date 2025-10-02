@@ -590,10 +590,33 @@ with st.sidebar:
     
     st.info(f"Journal entries are loaded from Firestore for User: **main_user**")
     
-    with st.expander(f"Summary Journal (Autonomous - {len(st.session_state[SUMMARY_COLLECTION])} entries)"):
-        st.code(read_file_fs(SUMMARY_COLLECTION), language='markdown', height=300)
+    # Read directly from Firestore instead of session state
+    if st.session_state.db and st.session_state.user_id:
+        try:
+            # Get summary count and content
+            summary_docs = list(st.session_state.db.collection(
+                get_journal_path(st.session_state.user_id, SUMMARY_COLLECTION)
+            ).stream())
+            summary_content = "\n".join([
+                f"\n--- [{doc.get('timestamp_str')}] ---\n{doc.get('content')}\n"
+                for doc in summary_docs
+            ])
+            
+            # Get deepdive count and content
+            deepdive_docs = list(st.session_state.db.collection(
+                get_journal_path(st.session_state.user_id, DEEPDIVE_COLLECTION)
+            ).stream())
+            deepdive_content = "\n".join([
+                f"\n--- [{doc.get('timestamp_str')}] ---\n{doc.get('content')}\n"
+                for doc in deepdive_docs
+            ])
+            
+            with st.expander(f"Summary Journal (Autonomous - {len(summary_docs)} entries)"):
+                st.code(summary_content if summary_content else "No entries yet", language='markdown', height=300)
+            
+            with st.expander(f"Deep Dive Journal (Triggered - {len(deepdive_docs)} entries)"):
+                st.code(deepdive_content if deepdive_content else "No entries yet", language='markdown', height=300)
+        except Exception as e:
+            st.error(f"Error loading journals: {e}")
     
-    with st.expander(f"Deep Dive Journal (Triggered - {len(st.session_state[DEEPDIVE_COLLECTION])} entries)"):
-        st.code(read_file_fs(DEEPDIVE_COLLECTION), language='markdown', height=300)
-        
     st.info(f"Chat Turns since last Deep Dive: **{st.session_state.turn_count}**")
