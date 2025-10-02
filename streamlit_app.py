@@ -640,6 +640,7 @@ with st.sidebar:
                 f"[{entry['timestamp_str']}]\n{entry['content']}"
                 for entry in deepdive_entries
             ])
+            st.write(f"DEBUG: deepdive_content length = {len(deepdive_content)}")
             
             with st.expander(f"Summary Journal (Autonomous - {len(summary_docs)} entries)"):
                 if summary_content:
