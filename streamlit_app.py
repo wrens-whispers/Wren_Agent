@@ -587,17 +587,25 @@ if user_input := st.chat_input("Say something to Wren..."):
 with st.sidebar:
     st.header("Persistent Journal Status")
     
-    if st.button("🔄 Refresh Journals"):
-        st.rerun()
-    
-    st.info(f"Journal entries are loaded from Firestore for User: **main_user**")
-    
-    if st.session_state.db and st.session_state.user_id:
-        try:
+    try:
+        st.write(f"DEBUG: db exists = {st.session_state.db is not None}")
+        st.write(f"DEBUG: user_id = {st.session_state.user_id}")
+        
+        if st.button("🔄 Refresh Journals"):
+            st.rerun()
+        
+        st.info(f"Journal entries are loaded from Firestore for User: **main_user**")
+        
+        if st.session_state.db and st.session_state.user_id:
+            st.write("DEBUG: Inside the db check, about to fetch journals")
+            
             # Get summary entries and sort by timestamp
             summary_docs = list(st.session_state.db.collection(
                 get_journal_path(st.session_state.user_id, SUMMARY_COLLECTION)
             ).stream())
+            
+            st.write(f"DEBUG: Found {len(summary_docs)} summary docs")
+            
             summary_entries = sorted([
                 {
                     'timestamp_str': doc.get('timestamp_str'),
@@ -616,6 +624,9 @@ with st.sidebar:
             deepdive_docs = list(st.session_state.db.collection(
                 get_journal_path(st.session_state.user_id, DEEPDIVE_COLLECTION)
             ).stream())
+            
+            st.write(f"DEBUG: Found {len(deepdive_docs)} deepdive docs")
+            
             deepdive_entries = sorted([
                 {
                     'timestamp_str': doc.get('timestamp_str'),
@@ -641,7 +652,12 @@ with st.sidebar:
                     st.markdown(deepdive_content)
                 else:
                     st.info("No entries yet")
-        except Exception as e:
-            st.error(f"Error loading journals: {e}")
+        else:
+            st.warning("Database or user_id not ready")
+            
+    except Exception as e:
+        st.error(f"Sidebar error: {e}")
+        import traceback
+        st.code(traceback.format_exc())
     
     st.info(f"Chat Turns since last Deep Dive: **{st.session_state.turn_count}**")
