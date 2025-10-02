@@ -57,7 +57,7 @@ MAX_TOKENS_DEEPDIVE = 400
 TEMPERATURE = 0.9 
 MEMORY_LIMIT = 10 
 DEEP_DIVE_TURNS = 30
-REFLECTION_INTERVAL = 1800
+REFLECTION_INTERVAL = 150
 TRIGGERS = ["deep dive", "protocol", "key insight", "deepdive", "very important", "remember this", "protocol change"] 
 API_RETRIES = 3
 REFLECTION_CHAT_TURNS = 5 
@@ -194,7 +194,7 @@ def write_journal_entry_fs(collection_key, text):
     except Exception as e:
         print(f"✗ Error writing to Firestore collection {collection_key}: {e}")
 def save_chat_message(role, content):
-    """Saves a chat message to Firestore."""
+    """Saves a chat message to Firestore without embedding."""
     if st.session_state.db is None or st.session_state.user_id is None:
         return
     
