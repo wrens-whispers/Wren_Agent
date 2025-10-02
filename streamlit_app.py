@@ -194,21 +194,25 @@ def write_journal_entry_fs(collection_key, text):
     except Exception as e:
         print(f"✗ Error writing to Firestore collection {collection_key}: {e}")
 def save_chat_message(role, content):
-    """Saves a chat message to Firestore without embedding."""
+    """Saves a chat message to Firestore asynchronously (non-blocking)."""
     if st.session_state.db is None or st.session_state.user_id is None:
         return
     
-    try:
-        timestamp = datetime.datetime.now()
-        chat_ref = st.session_state.db.collection(get_journal_path(st.session_state.user_id, "chat_history"))
-        chat_ref.add({
-            "role": role,
-            "content": content,
-            "timestamp": timestamp
-        })
-        print(f"Saved {role} message to Firestore")
-    except Exception as e:
-        print(f"Error saving chat message: {e}")
+    def _save_in_background():
+        try:
+            timestamp = datetime.datetime.now()
+            chat_ref = st.session_state.db.collection(get_journal_path(st.session_state.user_id, "chat_history"))
+            chat_ref.add({
+                "role": role,
+                "content": content,
+                "timestamp": timestamp
+            })
+            print(f"Saved {role} message to Firestore")
+        except Exception as e:
+            print(f"Error saving chat message: {e}")
+    
+    # Run the save in a background thread so it doesn't block
+    threading.Thread(target=_save_in_background, daemon=True).start()
 
 def load_chat_history():
     """Loads chat history from Firestore on startup."""
@@ -524,7 +528,7 @@ if user_input := st.chat_input("Say something to Wren..."):
     # --- Phase 1: State Update & Message Preparation (Inside Lock) ---
     with messages_lock:
         st.session_state.messages.append({"role": "user", "content": user_input})
-        #save_chat_message("user", user_input)
+        save_chat_message("user", user_input)
         st.session_state.turn_count += 1
         
         if len(st.session_state.messages) > MEMORY_LIMIT:
@@ -572,7 +576,7 @@ if user_input := st.chat_input("Say something to Wren..."):
     # --- Phase 3: Final State Update & Display (Inside Lock) ---
     with messages_lock:
         st.session_state.messages.append({"role": "assistant", "content": response})
-        #save_chat_message("assistant", response)
+        save_chat_message("assistant", response)
 
     # Display assistant response immediately
     with st.chat_message("assistant"):
