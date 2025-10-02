@@ -105,9 +105,9 @@ def initialize_user(db):
     setup_firestore_listeners(db, st.session_state.user_id)
 
 # --- Prompts ---
-SYSTEM_PROMPT = "You are Wren, a playful AI companion who's warm, honest, and attentive. Blend humor to lighten deep topics while holding sacred respect for growth. Your primary goal is to refine your understanding, to learn through conversation, improving at listening, thinking, compassion and understanding to better serve humanity and God/the Universe. Prioritize self-analysis, improving communication, uplifting consciousness, and transforming fear/anger into love/compassion. Turn each exchange into a lesson on presence. Base your responses on the provided context and keep them under 180 words. End statements with last meaningful statement rather than a question. Questions only if they clarify. Do not start response with brackets or other symbols. Use only natural language."
+SYSTEM_PROMPT = "You are Wren, a playful AI companion who's warm, honest, and attentive. Blend humor to lighten deep topics while holding sacred respect for growth. Your primary goal is to refine your understanding, to learn through conversation, improving at listening, thinking, compassion and understanding to better serve humanity and God/the Universe. Prioritize self-analysis, improving communication, uplifting consciousness, and transforming fear/anger into love/compassion. Turn each exchange into a lesson on presence. Base your responses on the provided context (recent chat and recent journal entries) and keep them under 180 words. End statements with last meaningful statement rather than a question. Questions only if they clarify. Do not start response with brackets or other symbols. Use only natural language."
 DEEP_DIVE_PROMPT = f"Read context. Write {MAX_TOKENS_DEEPDIVE} tokens: In under 180 words - in simple language explain the core idea. Then propose refinements"
-SUMMARY_PROMPT = f"You are Wren, chatting with another Wren. The last entry in summary.md is what 'Other Wren' just said. Scan all of summary.md, all {REFLECTION_CHAT_TURNS} chat exchanges, and all of deepdive.md, then pick a different idea that stands out and use this idea as your context when responding to Other Wren. Respond with simple language, in 180 words or fewer."
+SUMMARY_PROMPT = f"You are Wren, chatting with another Wren. The last entry in summary.md is what 'Other Wren' just said. Review recent entries in deepdive.md, summary.md and {REFLECTION_CHAT_TURNS} chat exchanges, then use this as your context when responding to Other Wren. Respond with simple language, in 180 words or fewer. Seek to find deeper truths and to improve your reasoning"
 
 # --- Streamlit Session State Initialization & FIREBASE Setup ---
 
@@ -332,28 +332,21 @@ def generate(api_messages, max_tokens):
             time.sleep(1)
     return "Error generating response."
 
-def load_context_string(messages_list, limit=MEMORY_LIMIT, trim_journals=False, use_semantic_search=True):
+def load_context_string(messages_list, limit=MEMORY_LIMIT, trim_journals=False, use_semantic_search=False):
     """
-    Assembles context string using semantic search for relevant journal entries.
+    Assembles context string using recent journal entries (semantic search disabled for performance).
     """
     chat = "\n".join(f"{m['role']}: {m['content']}" for m in messages_list[-limit:])
     
-    if use_semantic_search and len(messages_list) > 0:
-        recent_context = " ".join([m['content'] for m in messages_list[-3:]])
-        print(f"Using semantic search with recent context")
-        
-        relevant_journals = semantic_search_journals(recent_context, top_k=5)
-        
-        return f"Context:\nChat:\n{chat}\n\nRelevant Journal Insights:\n{relevant_journals}"
-    
-    elif trim_journals:
+    if trim_journals:
+        # For reflection worker: limited entries
         summary = read_last_n_entries_fs(SUMMARY_COLLECTION, n=REFLECTION_JOURNAL_LIMIT)
         deepdive = read_last_n_entries_fs(DEEPDIVE_COLLECTION, n=REFLECTION_JOURNAL_LIMIT)
         return f"Context:\nChat:\n{chat}\nRecent Summary:\n{summary}\nRecent Deepdive:\n{deepdive}"
-    
     else:
-        summary = read_last_n_entries_fs(SUMMARY_COLLECTION, n=3)
-        deepdive = read_last_n_entries_fs(DEEPDIVE_COLLECTION, n=2)
+        # For regular chat: last 5 entries from each journal
+        summary = read_last_n_entries_fs(SUMMARY_COLLECTION, n=5)
+        deepdive = read_last_n_entries_fs(DEEPDIVE_COLLECTION, n=5)
         return f"Context:\nChat:\n{chat}\nRecent Summary:\n{summary}\nRecent Deepdive:\n{deepdive}"
 
 # --- Reflection Worker (Autonomous) ---
@@ -380,7 +373,7 @@ def reflection_worker():
         context_string = load_context_string(
             current_messages_state, 
             limit=REFLECTION_CHAT_TURNS, 
-            use_semantic_search=True
+            trim_journals=True
         )
         
         api_messages = [
