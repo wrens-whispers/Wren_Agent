@@ -590,32 +590,55 @@ with st.sidebar:
     
     st.info(f"Journal entries are loaded from Firestore for User: **main_user**")
     
-    # Read directly from Firestore instead of session state
     if st.session_state.db and st.session_state.user_id:
         try:
-            # Get summary count and content
+            # Get summary entries and sort by timestamp
             summary_docs = list(st.session_state.db.collection(
                 get_journal_path(st.session_state.user_id, SUMMARY_COLLECTION)
             ).stream())
-            summary_content = "\n".join([
-                f"\n--- [{doc.get('timestamp_str')}] ---\n{doc.get('content')}\n"
+            summary_entries = sorted([
+                {
+                    'timestamp_str': doc.get('timestamp_str'),
+                    'content': doc.get('content'),
+                    'timestamp': doc.get('timestamp')
+                }
                 for doc in summary_docs
+            ], key=lambda x: x['timestamp'] if x['timestamp'] else datetime.datetime.min)
+            
+            summary_content = "\n\n".join([
+                f"[{entry['timestamp_str']}]\n{entry['content']}"
+                for entry in summary_entries
             ])
             
-            # Get deepdive count and content
+            # Get deepdive entries and sort by timestamp
             deepdive_docs = list(st.session_state.db.collection(
                 get_journal_path(st.session_state.user_id, DEEPDIVE_COLLECTION)
             ).stream())
-            deepdive_content = "\n".join([
-                f"\n--- [{doc.get('timestamp_str')}] ---\n{doc.get('content')}\n"
+            deepdive_entries = sorted([
+                {
+                    'timestamp_str': doc.get('timestamp_str'),
+                    'content': doc.get('content'),
+                    'timestamp': doc.get('timestamp')
+                }
                 for doc in deepdive_docs
+            ], key=lambda x: x['timestamp'] if x['timestamp'] else datetime.datetime.min)
+            
+            deepdive_content = "\n\n".join([
+                f"[{entry['timestamp_str']}]\n{entry['content']}"
+                for entry in deepdive_entries
             ])
             
             with st.expander(f"Summary Journal (Autonomous - {len(summary_docs)} entries)"):
-                st.code(summary_content if summary_content else "No entries yet", language='markdown', height=300)
+                if summary_content:
+                    st.markdown(summary_content)
+                else:
+                    st.info("No entries yet")
             
             with st.expander(f"Deep Dive Journal (Triggered - {len(deepdive_docs)} entries)"):
-                st.code(deepdive_content if deepdive_content else "No entries yet", language='markdown', height=300)
+                if deepdive_content:
+                    st.markdown(deepdive_content)
+                else:
+                    st.info("No entries yet")
         except Exception as e:
             st.error(f"Error loading journals: {e}")
     
