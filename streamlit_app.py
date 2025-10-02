@@ -644,13 +644,13 @@ with st.sidebar:
             
             with st.expander(f"Summary Journal (Autonomous - {len(summary_docs)} entries)"):
                 if summary_content:
-                    st.markdown(summary_content)
+                    st.text_area("Summary Content", summary_content, height=300)
                 else:
                     st.info("No entries yet")
             
             with st.expander(f"Deep Dive Journal (Triggered - {len(deepdive_docs)} entries)"):
                 if deepdive_content:
-                    st.markdown(deepdive_content)
+                    st.text_area("Deep Dive Content", deepdive_content, height=300)
                 else:
                     st.info("No entries yet")
         else:
