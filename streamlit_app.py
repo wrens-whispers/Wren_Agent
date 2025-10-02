@@ -368,6 +368,7 @@ def reflection_worker():
         time.sleep(5)
         
     while not st.session_state.stop_reflection.is_set():
+        print(f"=== Waiting {REFLECTION_INTERVAL} seconds for next reflection ===")
         time.sleep(REFLECTION_INTERVAL)
         
         with messages_lock:
@@ -407,7 +408,7 @@ if st.session_state.db is None:
     st.session_state.db = init_firebase()
     if st.session_state.db:
         initialize_user(st.session_state.db)
-
+st.write(f"DEBUG sidebar: db={st.session_state.db is not None}, user_id={st.session_state.user_id}")
 if st.session_state.db and st.session_state.user_id:
     start_reflection_thread()
 
