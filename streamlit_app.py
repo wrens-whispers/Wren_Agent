@@ -362,9 +362,10 @@ def reflection_worker():
     
     while not st.session_state.stop_reflection.is_set():
         with messages_lock:
-             if st.session_state.db and st.session_state.user_id and len(st.session_state.messages) >= 2:
-                 break
-        time.sleep(5) 
+            print(f"Checking: db={st.session_state.db is not None}, user={st.session_state.user_id is not None}, messages={len(st.session_state.messages)}")
+            if st.session_state.db and st.session_state.user_id and len(st.session_state.messages) >= 2:
+                break
+        time.sleep(5)
         
     while not st.session_state.stop_reflection.is_set():
         time.sleep(REFLECTION_INTERVAL)
