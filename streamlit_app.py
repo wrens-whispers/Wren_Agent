@@ -408,9 +408,6 @@ if st.session_state.db is None:
         initialize_user(st.session_state.db)
 
 if st.session_state.db and st.session_state.user_id:
-    # Load chat history once on startup
-    if len(st.session_state.messages) == 0:
-        st.session_state.messages = load_chat_history()
     start_reflection_thread()
 
 st.set_page_config(layout="wide", page_title="Wren: Self-Reflecting Agent")
@@ -587,6 +584,9 @@ if user_input := st.chat_input("Say something to Wren..."):
 
 with st.sidebar:
     st.header("Persistent Journal Status")
+    
+    if st.button("🔄 Refresh Journals"):
+        st.rerun()
     
     st.info(f"Journal entries are loaded from Firestore for User: **main_user**")
     
