@@ -524,7 +524,7 @@ if user_input := st.chat_input("Say something to Wren..."):
     # --- Phase 1: State Update & Message Preparation (Inside Lock) ---
     with messages_lock:
         st.session_state.messages.append({"role": "user", "content": user_input})
-        save_chat_message("user", user_input)
+        #save_chat_message("user", user_input)
         st.session_state.turn_count += 1
         
         if len(st.session_state.messages) > MEMORY_LIMIT:
@@ -572,7 +572,7 @@ if user_input := st.chat_input("Say something to Wren..."):
     # --- Phase 3: Final State Update & Display (Inside Lock) ---
     with messages_lock:
         st.session_state.messages.append({"role": "assistant", "content": response})
-        save_chat_message("assistant", response)
+        #save_chat_message("assistant", response)
 
     # Display assistant response immediately
     with st.chat_message("assistant"):
